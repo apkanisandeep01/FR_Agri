@@ -34,9 +34,9 @@ if len(fr_files) > 0 and len(bh_files):
     merged = df_fr.merge(df_bh, left_on=left_on, right_on=right_on, how='left')
     
     st.header('Processed file')
-    st.write(merged.head())
+    # st.write(merged.head())
 
-    
+    st.divider()
     processed_df = merged.groupby(['Bucket ID', 'Village LGD Code']).agg({
         "Village Name": lambda x: ", ".join(map(str, pd.unique(x))),
         "Farmer Name": "last",
@@ -54,6 +54,7 @@ if len(fr_files) > 0 and len(bh_files):
 
     processed_df.drop(columns=['Village LGD Code'], inplace=True)
     processed_df =processed_df.rename({'Farmer Mobile Number':'FR Mobile No', 'MobileNo':'Bheema Mobile No'}, axis=1)
+    
     st.write(processed_df.head())
 
     st.info("📦 **Combined File Ready**")
