@@ -23,8 +23,8 @@ if len(fr_files) > 0 and len(bh_files):
     # st.write(df_bh.head())
 
     # columns to clean
-    left_on = ['Village Name', 'Farmer Name', 'Identifier Name']
-    right_on = ['VillName', 'FarmerName_Tel', 'FatherName_Tel']
+    left_on = ['Farmer Name', 'Identifier Name']
+    right_on = ['FarmerName_Tel', 'FatherName_Tel']
     
     # normalize join columns in df (left)
     df_fr[left_on] = df_fr[left_on].astype(str).apply(lambda col: col.str.strip().str.lower())
