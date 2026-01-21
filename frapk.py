@@ -188,6 +188,7 @@ if fr_files and bh_files:
         processed_df.drop(columns=["Village LGD Code"], inplace=True)
 
         st.success("File processed successfully")
+        st.write(processed_df.head())
 
     except Exception:
         st.toast(
