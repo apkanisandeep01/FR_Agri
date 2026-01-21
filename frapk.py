@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🌾 FR Excel formatter - Merger (TiDB Test)")
+st.title("🌾 FR Excel formatter - Merger")
 st.markdown("Upload multiple Excel files to deduplicate and merge to fetch Aadhar Card.")
 
 # --------------------------------------------------
@@ -185,7 +185,7 @@ if fr_files and bh_files:
     # Increment counter ONLY on success
     # --------------------------------------------------
     run_count = increment_counter("file_process_count")
-    st.metric("📊 Total Processing Runs", run_count)
+    st.metric("📊 Total files processed till now", run_count)
 
     st.info("📦 Combined File Ready")
 
@@ -204,3 +204,19 @@ if fr_files and bh_files:
 
 else:
     st.info("Waiting for files to be uploaded...")
+
+st.markdown("---")
+st.markdown(
+    """
+    <div style="text-align:center; color:gray; font-size:14px;">
+        Developed and maintained by <b>Sandeep Kumar</b><br>
+        <a href="https://apkanisandeep01.github.io/my-portfolio/"
+           target="_blank"
+           style="color:#4a90e2; text-decoration:none;">
+            Visit my portfolio
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
