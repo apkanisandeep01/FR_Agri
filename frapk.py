@@ -18,33 +18,24 @@ st.title("🌾 FR Excel formatter - Merger")
 st.markdown("Upload multiple Excel files to deduplicate and merge to fetch Aadhar Card.")
 
 # ==================================================
-# SESSION STATE FLAGS
+# SESSION STATE
 # ==================================================
-if "processing_warning" not in st.session_state:
-    st.session_state.processing_warning = False
+if "last_downloaded_fingerprint" not in st.session_state:
+    st.session_state.last_downloaded_fingerprint = None
 
-if "metric_warning" not in st.session_state:
-    st.session_state.metric_warning = False
-
-if "last_fingerprint" not in st.session_state:
-    st.session_state.last_fingerprint = None
+if "latest_metric_value" not in st.session_state:
+    st.session_state.latest_metric_value = None
 
 # ==================================================
 # SAFE EXCEL READER (SOFT FAILURE)
 # ==================================================
 def safe_read_excel(file, required_columns=None):
-    try:
-        df = pd.read_excel(file)
-
-        if required_columns:
-            missing = [c for c in required_columns if c not in df.columns]
-            if missing:
-                raise ValueError(f"Missing columns: {missing}")
-
-        return df
-
-    except Exception:
-        raise RuntimeError("Invalid Excel")
+    df = pd.read_excel(file)
+    if required_columns:
+        missing = [c for c in required_columns if c not in df.columns]
+        if missing:
+            raise ValueError("Missing columns")
+    return df
 
 # ==================================================
 # FILE FINGERPRINT
@@ -127,18 +118,24 @@ bh_files = st.file_uploader(
     accept_multiple_files=True
 )
 
+# --------------------------------------------------
+# RESET STATE WHEN FILES ARE CLEARED
+# --------------------------------------------------
+if not fr_files or not bh_files:
+    st.session_state.last_downloaded_fingerprint = None
+
 processed_df = None
 
 # ==================================================
-# MAIN PROCESSING (FULLY GUARDED)
+# MAIN PROCESSING (NO COUNTER HERE)
 # ==================================================
 if fr_files and bh_files:
     try:
-        # ---------- FR FILES ----------
+        # FR FILES
         dfs = [safe_read_excel(f) for f in fr_files]
         df_fr = pd.concat(dfs, ignore_index=True)
 
-        # ---------- BHEEMA FILES ----------
+        # BHEEMA FILES
         b_dfs = [
             safe_read_excel(
                 f,
@@ -155,7 +152,7 @@ if fr_files and bh_files:
         ]
         df_bh = pd.concat(b_dfs, ignore_index=True)
 
-        # ---------- MERGE ----------
+        # MERGE
         left_on = ["Village Name", "Farmer Name", "Identifier Name"]
         right_on = ["VillName", "FarmerName_Tel", "FatherName_Tel"]
 
@@ -173,7 +170,7 @@ if fr_files and bh_files:
             how="left"
         )
 
-        # ---------- GROUP BY ----------
+        # GROUP BY
         processed_df = merged.groupby(
             ["Bucket ID", "Village LGD Code"]
         ).agg({
@@ -190,56 +187,58 @@ if fr_files and bh_files:
 
         processed_df.drop(columns=["Village LGD Code"], inplace=True)
 
-        st.session_state.processing_warning = False
+        st.success("File processed successfully")
 
     except Exception:
-        st.session_state.processing_warning = True
         st.toast(
             "⚠️ There is an issue with the Excel file. Please reupload.",
             icon="⚠️"
         )
 
 # ==================================================
-# METRIC (NON-BLOCKING)
-# ==================================================
-if processed_df is not None:
-    try:
-        fingerprint = get_files_fingerprint(fr_files + bh_files)
-
-        if st.session_state.last_fingerprint != fingerprint:
-            count = increment_counter("file_process_count")
-            st.session_state.last_fingerprint = fingerprint
-        else:
-            count = get_counter_value("file_process_count")
-
-        st.metric("📊 Total files processed till now", count)
-        st.session_state.metric_warning = False
-
-    except Exception:
-        st.session_state.metric_warning = True
-        st.toast(
-            "⚠️ Unable to update usage metric. Download is still available.",
-            icon="⚠️"
-        )
-
-# ==================================================
-# DOWNLOAD (ALWAYS AVAILABLE IF DATA EXISTS)
+# DOWNLOAD + COUNTER (ONLY PLACE COUNTER INCREMENTS)
 # ==================================================
 if processed_df is not None:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         processed_df.to_excel(writer, index=False, sheet_name="All_Villages")
 
-    st.download_button(
+    fingerprint = get_files_fingerprint(fr_files + bh_files)
+
+    if st.download_button(
         label="Download Full Excel",
         data=buffer.getvalue(),
         file_name="Full_Farmer_Report.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
+    ):
+        if st.session_state.last_downloaded_fingerprint != fingerprint:
+            try:
+                new_value = increment_counter("file_process_count")
+                st.session_state.last_downloaded_fingerprint = fingerprint
+                st.session_state.latest_metric_value = new_value
+                st.toast("✅ Download recorded", icon="✅")
+            except Exception:
+                st.toast(
+                    "⚠️ Download completed, but counter update failed.",
+                    icon="⚠️"
+                )
+
+# ==================================================
+# SHOW METRIC AFTER DOWNLOAD
+# ==================================================
+if st.session_state.latest_metric_value is not None:
+    st.metric(
+        "📊 Total files processed till now",
+        st.session_state.latest_metric_value
     )
 
 else:
-    st.info("Waiting for files to be uploaded...")
+    try:
+        current_value = get_counter_value("file_process_count")
+        st.metric("📊 Total files processed till now", current_value)
+    except Exception:
+        pass
 
 # ==================================================
 # FOOTER
