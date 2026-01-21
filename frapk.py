@@ -3,10 +3,11 @@ import pandas as pd
 import io
 import mysql.connector
 import tempfile
+import hashlib
 
-# --------------------------------------------------
-# Page config (same as your working app)
-# --------------------------------------------------
+# ==================================================
+# PAGE CONFIG
+# ==================================================
 st.set_page_config(
     page_title="FR Agri Excel Merger",
     page_icon="❤️",
@@ -16,9 +17,21 @@ st.set_page_config(
 st.title("🌾 FR Excel formatter - Merger")
 st.markdown("Upload multiple Excel files to deduplicate and merge to fetch Aadhar Card.")
 
-# --------------------------------------------------
-# SAFE EXCEL READER (prevents redacted errors)
-# --------------------------------------------------
+# ==================================================
+# SESSION STATE FLAGS
+# ==================================================
+if "processing_warning" not in st.session_state:
+    st.session_state.processing_warning = False
+
+if "metric_warning" not in st.session_state:
+    st.session_state.metric_warning = False
+
+if "last_fingerprint" not in st.session_state:
+    st.session_state.last_fingerprint = None
+
+# ==================================================
+# SAFE EXCEL READER (SOFT FAILURE)
+# ==================================================
 def safe_read_excel(file, required_columns=None):
     try:
         df = pd.read_excel(file)
@@ -26,25 +39,26 @@ def safe_read_excel(file, required_columns=None):
         if required_columns:
             missing = [c for c in required_columns if c not in df.columns]
             if missing:
-                st.error(
-                    "❌ Please check the Rythu Bheema file once again.\n\n"
-                    f"Missing columns: {', '.join(missing)}"
-                )
-                st.stop()
+                raise ValueError(f"Missing columns: {missing}")
 
         return df
 
     except Exception:
-        st.error(
-            "❌ Please check the files once again.\n\n"
-            "• Ensure correct Excel file is uploaded\n"
-            "• Ensure files are uploaded in the correct place"
-        )
-        st.stop()
+        raise RuntimeError("Invalid Excel")
 
-# --------------------------------------------------
-# TiDB SSL CA handling
-# --------------------------------------------------
+# ==================================================
+# FILE FINGERPRINT
+# ==================================================
+def get_files_fingerprint(files):
+    hasher = hashlib.sha256()
+    for f in files:
+        hasher.update(f.name.encode())
+        hasher.update(str(f.size).encode())
+    return hasher.hexdigest()
+
+# ==================================================
+# TiDB SSL CA
+# ==================================================
 @st.cache_resource
 def get_ca_cert_path():
     cert = st.secrets["TIDB_SSL_CA"]
@@ -53,9 +67,9 @@ def get_ca_cert_path():
     temp.close()
     return temp.name
 
-# --------------------------------------------------
-# TiDB connection
-# --------------------------------------------------
+# ==================================================
+# TiDB CONNECTION
+# ==================================================
 @st.cache_resource
 def get_tidb_connection():
     return mysql.connector.connect(
@@ -68,19 +82,17 @@ def get_tidb_connection():
         ssl_verify_cert=True
     )
 
-# --------------------------------------------------
-# Counter function
-# --------------------------------------------------
+# ==================================================
+# COUNTER FUNCTIONS
+# ==================================================
 def increment_counter(counter_name):
     conn = get_tidb_connection()
     cur = conn.cursor()
-
     cur.execute(
         "UPDATE app_counter SET counter_value = counter_value + 1 WHERE counter_name = %s",
         (counter_name,)
     )
     conn.commit()
-
     cur.execute(
         "SELECT counter_value FROM app_counter WHERE counter_name = %s",
         (counter_name,)
@@ -89,9 +101,20 @@ def increment_counter(counter_name):
     cur.close()
     return value
 
-# --------------------------------------------------
-# File upload (same UI as your app)
-# --------------------------------------------------
+def get_counter_value(counter_name):
+    conn = get_tidb_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT counter_value FROM app_counter WHERE counter_name = %s",
+        (counter_name,)
+    )
+    value = cur.fetchone()[0]
+    cur.close()
+    return value
+
+# ==================================================
+# FILE UPLOADERS
+# ==================================================
 fr_files = st.file_uploader(
     "Upload Unclaimed files",
     type="xlsx",
@@ -104,99 +127,112 @@ bh_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-# --------------------------------------------------
-# Main processing logic (UNCHANGED logic)
-# --------------------------------------------------
+processed_df = None
+
+# ==================================================
+# MAIN PROCESSING (FULLY GUARDED)
+# ==================================================
 if fr_files and bh_files:
+    try:
+        # ---------- FR FILES ----------
+        dfs = [safe_read_excel(f) for f in fr_files]
+        df_fr = pd.concat(dfs, ignore_index=True)
 
-    # --- FR files ---
-    dfs = [safe_read_excel(file) for file in fr_files]
-    df_fr = pd.concat(dfs, ignore_index=True)
-    st.divider()
+        # ---------- BHEEMA FILES ----------
+        b_dfs = [
+            safe_read_excel(
+                f,
+                required_columns=[
+                    "VillName",
+                    "PPBNO",
+                    "FarmerName_Tel",
+                    "FatherName_Tel",
+                    "AadharId",
+                    "MobileNo"
+                ]
+            )
+            for f in bh_files
+        ]
+        df_bh = pd.concat(b_dfs, ignore_index=True)
 
-    # --- Bheema files ---
-    b_dfs = [
-        safe_read_excel(
-            file,
-            required_columns=[
-                'VillName',
-                'PPBNO',
-                'FarmerName_Tel',
-                'FatherName_Tel',
-                'AadharId',
-                'MobileNo'
-            ]
+        # ---------- MERGE ----------
+        left_on = ["Village Name", "Farmer Name", "Identifier Name"]
+        right_on = ["VillName", "FarmerName_Tel", "FatherName_Tel"]
+
+        df_fr[left_on] = df_fr[left_on].astype(str).apply(
+            lambda c: c.str.strip().str.lower()
         )
-        for file in bh_files
-    ]
-    df_bh = pd.concat(b_dfs, ignore_index=True)
+        df_bh[right_on] = df_bh[right_on].astype(str).apply(
+            lambda c: c.str.strip().str.lower()
+        )
 
-    # --- Join columns ---
-    left_on = ['Village Name', 'Farmer Name', 'Identifier Name']
-    right_on = ['VillName', 'FarmerName_Tel', 'FatherName_Tel']
+        merged = df_fr.merge(
+            df_bh,
+            left_on=left_on,
+            right_on=right_on,
+            how="left"
+        )
 
-    df_fr[left_on] = df_fr[left_on].astype(str).apply(
-        lambda col: col.str.strip().str.lower()
-    )
-    df_bh[right_on] = df_bh[right_on].astype(str).apply(
-        lambda col: col.str.strip().str.lower()
-    )
+        # ---------- GROUP BY ----------
+        processed_df = merged.groupby(
+            ["Bucket ID", "Village LGD Code"]
+        ).agg({
+            "Village Name": lambda x: ", ".join(pd.unique(x.astype(str))),
+            "Farmer Name": "last",
+            "Identifier Name": "last",
+            "Farmer Mobile Number": "last",
+            "AadharId": "last",
+            "MobileNo": "last",
+            "PPBNO": "last",
+            "Survey Number": lambda x: ", ".join(pd.unique(x.astype(str))),
+            "Sub Survey Number": lambda x: ", ".join(pd.unique(x.astype(str)))
+        }).reset_index()
 
-    merged = df_fr.merge(
-        df_bh,
-        left_on=left_on,
-        right_on=right_on,
-        how='left'
-    )
+        processed_df.drop(columns=["Village LGD Code"], inplace=True)
 
-    st.header('Processed file')
-    st.divider()
+        st.session_state.processing_warning = False
 
-    processed_df = merged.groupby(
-        ['Bucket ID', 'Village LGD Code']
-    ).agg({
-        "Village Name": lambda x: ", ".join(map(str, pd.unique(x))),
-        "Farmer Name": "last",
-        "Identifier Name": "last",
-        "Farmer Mobile Number": "last",
-        "AadharId": "last",
-        "MobileNo": "last",
-        "PPBNO": "last",
-        "Survey Number": lambda x: ", ".join(map(str, pd.unique(x))),
-        "Sub Survey Number": lambda x: ", ".join(map(str, pd.unique(x)))
-    }).reset_index()
+    except Exception:
+        st.session_state.processing_warning = True
+        st.toast(
+            "⚠️ There is an issue with the Excel file. Please reupload.",
+            icon="⚠️"
+        )
 
-    processed_df['Farmer Mobile Number'] = processed_df['Farmer Mobile Number'].astype(str)
-    processed_df['AadharId'] = processed_df['AadharId'].astype('Int64').astype(str)
-    processed_df['MobileNo'] = processed_df['MobileNo'].astype('Int64').astype(str)
+# ==================================================
+# METRIC (NON-BLOCKING)
+# ==================================================
+if processed_df is not None:
+    try:
+        fingerprint = get_files_fingerprint(fr_files + bh_files)
 
-    processed_df.drop(columns=['Village LGD Code'], inplace=True)
-    processed_df = processed_df.rename(
-        {
-            'Farmer Mobile Number': 'FR Mobile No',
-            'MobileNo': 'Bheema Mobile No'
-        },
-        axis=1
-    )
+        if st.session_state.last_fingerprint != fingerprint:
+            count = increment_counter("file_process_count")
+            st.session_state.last_fingerprint = fingerprint
+        else:
+            count = get_counter_value("file_process_count")
 
-    st.write(processed_df.head())
+        st.metric("📊 Total files processed till now", count)
+        st.session_state.metric_warning = False
 
-    # --------------------------------------------------
-    # Increment counter ONLY on success
-    # --------------------------------------------------
-    run_count = increment_counter("file_process_count")
-    st.metric("📊 Total files processed till now", run_count)
+    except Exception:
+        st.session_state.metric_warning = True
+        st.toast(
+            "⚠️ Unable to update usage metric. Download is still available.",
+            icon="⚠️"
+        )
 
-    st.info("📦 Combined File Ready")
-
-    # --- Download ---
-    excel_buffer = io.BytesIO()
-    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-        processed_df.to_excel(writer, index=False, sheet_name='All_Villages')
+# ==================================================
+# DOWNLOAD (ALWAYS AVAILABLE IF DATA EXISTS)
+# ==================================================
+if processed_df is not None:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        processed_df.to_excel(writer, index=False, sheet_name="All_Villages")
 
     st.download_button(
         label="Download Full Excel",
-        data=excel_buffer.getvalue(),
+        data=buffer.getvalue(),
         file_name="Full_Farmer_Report.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
@@ -205,6 +241,9 @@ if fr_files and bh_files:
 else:
     st.info("Waiting for files to be uploaded...")
 
+# ==================================================
+# FOOTER
+# ==================================================
 st.markdown("---")
 st.markdown(
     """
@@ -219,4 +258,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
