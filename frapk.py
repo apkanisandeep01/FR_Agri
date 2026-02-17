@@ -145,7 +145,8 @@ if fr_files and bh_files:
                     "FarmerName_Tel",
                     "FatherName_Tel",
                     "AadharId",
-                    "MobileNo"
+                    "MobileNo",
+                    'EnrollmenStatus'
                 ]
             )
             for f in bh_files
@@ -182,7 +183,8 @@ if fr_files and bh_files:
             "MobileNo": "last",
             "PPBNO": "last",
             "Survey Number": lambda x: ", ".join(pd.unique(x.astype(str))),
-            "Sub Survey Number": lambda x: ", ".join(pd.unique(x.astype(str)))
+            "Sub Survey Number": lambda x: ", ".join(pd.unique(x.astype(str))),
+            'EnrollmenStatus': 'last'
         }).reset_index()
 
         processed_df.drop(columns=["Village LGD Code"], inplace=True)
