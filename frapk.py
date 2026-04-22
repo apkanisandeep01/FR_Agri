@@ -175,15 +175,15 @@ if fr_files and bh_files:
         processed_df = merged.groupby(
             ["Bucket ID", "Village LGD Code"]
         ).agg({
-            "Village Name": lambda x: ", ".join(pd.unique(x.astype(str))),
+            "Village Name": lambda x: ", ".join([str(val) for val in x.unique() if pd.notna(val)]),
             "Farmer Name": "last",
             "Identifier Name": "last",
             "Farmer Mobile Number": "last",
             "AadharId": "last",
             "MobileNo": "last",
             "PPBNO": "last",
-            "Survey Number": lambda x: ", ".join(pd.unique(x.astype(str))),
-            "Sub Survey Number": lambda x: ", ".join(pd.unique(x.astype(str))),
+            "Survey Number": lambda x: ", ".join([str(val) for val in x.unique() if pd.notna(val)]),
+            "Sub Survey Number": lambda x: ", ".join([str(val) for val in x.unique() if pd.notna(val)]),
             'EnrollmenStatus': 'last'
         }).reset_index()
 
@@ -192,12 +192,10 @@ if fr_files and bh_files:
         st.success("File processed successfully")
         st.write(processed_df.head())
 
-    except Exception:
-        st.toast(
-            "⚠️ There is an issue with the Excel file. Please reupload.",
-            icon="⚠️"
-        )
-
+    except Exception as e:
+        # print(e) "⚠️ There is an issue with the Excel file. Please reupload.",
+        #     icon="⚠️"
+        st.toast(e)
 # ==================================================
 # DOWNLOAD + COUNTER (ONLY PLACE COUNTER INCREMENTS)
 # ==================================================
@@ -250,7 +248,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center; color:gray; font-size:14px;">
-        Developed and maintained by <b>Sandeep Kumar</b><br>
+        Developed and maintained by <b>Sandeep Kumar Apkani</b><br>
         <a href="https://apkanisandeep01.github.io/my-portfolio/"
            target="_blank"
            style="color:#4a90e2; text-decoration:none;">
