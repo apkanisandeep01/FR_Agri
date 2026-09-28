@@ -4,18 +4,298 @@ import io
 import mysql.connector
 import tempfile
 import hashlib
+from datetime import datetime
+import streamlit.components.v1 as components
+
 
 # ==================================================
 # PAGE CONFIG
 # ==================================================
+# st.set_page_config(
+#     page_title="FR Agri Excel Merger",
+#     page_icon="❤️",
+#     layout="centered"
+# )
 st.set_page_config(
-    page_title="FR Agri Excel Merger",
-    page_icon="❤️",
-    layout="wide"
+    page_title="FR DataSync - Merger",
+    page_icon="fr_datasync_logo.png",
+    layout="centered"
 )
 
-st.title("🌾 FR Excel formatter - Merger")
-st.markdown("Upload multiple Excel files to deduplicate and merge to fetch Aadhar Card.")
+# ==================================================
+# GREEN THEME + HEADER + BOLD UPLOAD + REVIEW + FOOTER
+# ==================================================
+st.markdown("""
+<style>
+    .stApp {
+        background: linear-gradient(180deg, #f1f8f1 0%, #ffffff 40%);
+    }
+
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 1.5rem;
+    }
+
+    h1, h2, h3 {
+        color: #1b5e20;
+    }
+
+    /* =========================================
+       HERO HEADER
+       ========================================= */
+    .fr-hero {
+        background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 55%, #558b2f 100%);
+        border-radius: 18px;
+        padding: 28px 30px;
+        color: #fff;
+        box-shadow: 0 10px 30px rgba(27,94,32,.25);
+        margin-bottom: 1.5rem;
+    }
+
+    .fr-hero h1 {
+        color: #fff;
+        font-size: 2rem;
+        margin: 0 0 .4rem 0;
+        padding: 0;
+    }
+
+    .fr-hero p {
+        color: #e8f5e9;
+        font-size: .98rem;
+        line-height: 1.55;
+        margin: 0;
+    }
+
+    .fr-hero .badge {
+        display: inline-block;
+        background: rgba(255,255,255,.18);
+        color: #fff;
+        padding: 3px 12px;
+        border-radius: 999px;
+        font-size: .75rem;
+        letter-spacing: .5px;
+        margin-bottom: .7rem;
+    }
+
+    /* =========================================
+       BOLD FILE UPLOAD AREA
+       ========================================= */
+    div[data-testid="stFileUploader"] {
+        margin-bottom: 1.2rem;
+    }
+
+    div[data-testid="stFileUploader"] label p {
+        color: #0d4715 !important;
+        font-size: 1.08rem !important;
+        font-weight: 800 !important;
+        letter-spacing: .15px;
+    }
+
+    div[data-testid="stFileUploader"] section {
+        border: 3px dashed #2e7d32 !important;
+        background: linear-gradient(135deg, #f4fbf4 0%, #eaf7eb 100%) !important;
+        border-radius: 16px !important;
+        padding: 1rem !important;
+        box-shadow: 0 4px 14px rgba(46,125,50,.10);
+    }
+
+    div[data-testid="stFileUploader"] section:hover {
+        border-color: #1b5e20 !important;
+        background: #e4f4e5 !important;
+        box-shadow: 0 6px 18px rgba(46,125,50,.18);
+    }
+
+    div[data-testid="stFileUploader"] small,
+    div[data-testid="stFileUploader"] span,
+    div[data-testid="stFileUploader"] p {
+        font-weight: 600;
+        color: #35633a;
+    }
+
+    div[data-testid="stFileUploaderDropzone"] button {
+        background: #2e7d32 !important;
+        color: #ffffff !important;
+        border-radius: 10px !important;
+        border: none !important;
+        font-weight: 800 !important;
+        padding: .45rem 1rem !important;
+    }
+
+    div[data-testid="stFileUploaderDropzone"] button:hover {
+        background: #1b5e20 !important;
+        color: #ffffff !important;
+    }
+
+    /* =========================================
+       PROCESS + DOWNLOAD BUTTONS
+       ========================================= */
+    div.stButton > button,
+    div.stDownloadButton > button {
+        background: #2e7d32;
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        font-weight: 800;
+        padding: .75rem 1rem;
+        transition: all .2s ease;
+    }
+
+    div.stButton > button:hover,
+    div.stDownloadButton > button:hover {
+        background: #1b5e20;
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(46,125,50,.30);
+    }
+
+    div.stButton > button:disabled {
+        background: #c8d8c8;
+        color: #6b7b6b;
+    }
+
+    /* =========================================
+       METRIC CARD
+       ========================================= */
+    div[data-testid="stMetric"] {
+        background: #ffffff;
+        border: 1px solid #c8e6c9;
+        border-left: 6px solid #2e7d32;
+        border-radius: 14px;
+        padding: 14px 18px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    }
+
+    div[data-testid="stMetricValue"] {
+        color: #1b5e20;
+    }
+
+    /* =========================================
+       REVIEW CARD
+       ========================================= */
+    .review-card {
+        margin-top: 2rem;
+        padding: 22px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #0f2e13 0%, #1b5e20 100%);
+        color: #ffffff;
+        box-shadow: 0 8px 22px rgba(15,46,19,.20);
+        text-align: center;
+    }
+
+    .review-card h2 {
+        color: #ffffff;
+        font-size: 1.35rem;
+        margin: 0 0 .45rem 0;
+    }
+
+    .review-card p {
+        color: #d7ead7;
+        font-size: .92rem;
+        line-height: 1.5;
+        margin-bottom: 0;
+    }
+
+    .review-note {
+        margin-top: .7rem;
+        color: #557b58;
+        font-size: .78rem;
+        text-align: center;
+    }
+
+    /* =========================================
+       COMPACT FOOTER
+       ========================================= */
+    .fr-footer {
+        margin-top: 2rem;
+        padding: 16px 18px 12px 18px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #0f2e13 0%, #1b5e20 100%);
+        color: #d7ead7;
+        text-align: center;
+        box-shadow: 0 8px 20px rgba(15,46,19,.20);
+    }
+
+    .fr-footer .brand {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 2px;
+    }
+
+    .fr-footer .tagline {
+        font-size: .78rem;
+        color: #a9d0a9;
+        margin-bottom: 8px;
+    }
+
+    .fr-footer .dev {
+        font-size: .8rem;
+        color: #e6f2e6;
+    }
+
+    .fr-footer .dev b {
+        color: #ffffff;
+    }
+
+    .fr-footer .links {
+        margin-top: 9px;
+    }
+
+    .fr-footer .links a {
+        display: inline-block;
+        margin: 3px 4px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: .75rem;
+        font-weight: 600;
+        color: #ffffff !important;
+        text-decoration: none;
+        background: rgba(255,255,255,.10);
+        border: 1px solid rgba(255,255,255,.20);
+        transition: all .2s ease;
+    }
+
+    .fr-footer .links a:hover {
+        background: #43a047;
+        border-color: #43a047;
+        transform: translateY(-1px);
+    }
+
+    .fr-footer .features {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: .7rem;
+    }
+
+    .fr-footer .features span {
+        background: rgba(255,255,255,.06);
+        padding: 3px 8px;
+        border-radius: 7px;
+    }
+
+    .fr-footer .bottom {
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255,255,255,.12);
+        font-size: .68rem;
+        color: #92b892;
+    }
+</style>
+
+<div class="fr-hero">
+    <span class="badge">FARMER RECORDS · EXCEL MERGER</span>
+    <h1>FR DataSync - Merger</h1>
+    <p>
+        Upload multiple agriculture Excel files to bring matching farmer records together,
+        remove duplicate information, and create one organised file. FR DataSync makes it
+        easier to manage farmer records without manually comparing multiple files.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
 
 # ==================================================
 # SESSION STATE
@@ -26,26 +306,42 @@ if "last_downloaded_fingerprint" not in st.session_state:
 if "latest_metric_value" not in st.session_state:
     st.session_state.latest_metric_value = None
 
+if "process_fingerprint" not in st.session_state:
+    st.session_state.process_fingerprint = None
+
+if "show_review_form" not in st.session_state:
+    st.session_state.show_review_form = False
+
+
 # ==================================================
-# SAFE EXCEL READER (SOFT FAILURE)
+# SAFE EXCEL READER
 # ==================================================
 def safe_read_excel(file, required_columns=None):
     df = pd.read_excel(file)
+
     if required_columns:
-        missing = [c for c in required_columns if c not in df.columns]
+        missing = [column for column in required_columns if column not in df.columns]
+
         if missing:
-            raise ValueError("Missing columns")
+            raise ValueError(
+                f"Missing required columns in Bheema file: {', '.join(missing)}"
+            )
+
     return df
+
 
 # ==================================================
 # FILE FINGERPRINT
 # ==================================================
 def get_files_fingerprint(files):
     hasher = hashlib.sha256()
-    for f in files:
-        hasher.update(f.name.encode())
-        hasher.update(str(f.size).encode())
+
+    for file in files:
+        hasher.update(file.name.encode())
+        hasher.update(str(file.size).encode())
+
     return hasher.hexdigest()
+
 
 # ==================================================
 # TiDB SSL CA
@@ -53,10 +349,13 @@ def get_files_fingerprint(files):
 @st.cache_resource
 def get_ca_cert_path():
     cert = st.secrets["TIDB_SSL_CA"]
+
     temp = tempfile.NamedTemporaryFile(delete=False)
     temp.write(cert.encode())
     temp.close()
+
     return temp.name
+
 
 # ==================================================
 # TiDB CONNECTION
@@ -73,97 +372,204 @@ def get_tidb_connection():
         ssl_verify_cert=True
     )
 
+
 # ==================================================
 # COUNTER FUNCTIONS
 # ==================================================
 def increment_counter(counter_name):
     conn = get_tidb_connection()
     cur = conn.cursor()
+
     cur.execute(
-        "UPDATE app_counter SET counter_value = counter_value + 1 WHERE counter_name = %s",
+        """
+        UPDATE app_counter
+        SET counter_value = counter_value + 1
+        WHERE counter_name = %s
+        """,
         (counter_name,)
     )
+
     conn.commit()
+
     cur.execute(
-        "SELECT counter_value FROM app_counter WHERE counter_name = %s",
+        """
+        SELECT counter_value
+        FROM app_counter
+        WHERE counter_name = %s
+        """,
         (counter_name,)
     )
+
     value = cur.fetchone()[0]
+
     cur.close()
+
     return value
+
 
 def get_counter_value(counter_name):
     conn = get_tidb_connection()
     cur = conn.cursor()
+
     cur.execute(
-        "SELECT counter_value FROM app_counter WHERE counter_name = %s",
+        """
+        SELECT counter_value
+        FROM app_counter
+        WHERE counter_name = %s
+        """,
         (counter_name,)
     )
+
     value = cur.fetchone()[0]
+
     cur.close()
+
     return value
+
 
 # ==================================================
 # FILE UPLOADERS
 # ==================================================
 fr_files = st.file_uploader(
-    "Upload Unclaimed files",
+    "📁 Upload Unclaimed Excel Files",
     type="xlsx",
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key="unclaimed_uploader"
 )
 
 bh_files = st.file_uploader(
-    "Upload Bheema files",
+    "📁 Upload Bheema Excel Files",
     type="xlsx",
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key="bheema_uploader"
 )
 
-# --------------------------------------------------
+
+# ==================================================
 # RESET STATE WHEN FILES ARE CLEARED
-# --------------------------------------------------
+# ==================================================
 if not fr_files or not bh_files:
     st.session_state.last_downloaded_fingerprint = None
+    st.session_state.process_fingerprint = None
+    st.session_state.show_review_form = False
+
+
+# ==================================================
+# PROCESS BUTTON
+# ==================================================
+files_ready = bool(fr_files) and bool(bh_files)
+
+current_fingerprint = (
+    get_files_fingerprint(fr_files + bh_files)
+    if files_ready
+    else None
+)
+
+if st.button(
+    "🚀 Process Files",
+    disabled=not files_ready,
+    use_container_width=True
+):
+    st.session_state.process_fingerprint = current_fingerprint
+    st.session_state.show_review_form = False
+
+
+if not files_ready:
+    st.info("👆 Upload both Unclaimed and Bheema Excel files, then click Process Files.")
+
+elif st.session_state.process_fingerprint != current_fingerprint:
+    st.info("✅ Files uploaded. Click Process Files to start.")
+
 
 processed_df = None
 
+
 # ==================================================
-# MAIN PROCESSING (NO COUNTER HERE)
+# MAIN EXCEL PROCESSING
 # ==================================================
-if fr_files and bh_files:
+if files_ready and st.session_state.process_fingerprint == current_fingerprint:
     try:
-        # FR FILES
-        dfs = [safe_read_excel(f) for f in fr_files]
-        df_fr = pd.concat(dfs, ignore_index=True)
+        # ------------------------------------------
+        # READ UNCLAIMED FILES
+        # ------------------------------------------
+        fr_dfs = [safe_read_excel(file) for file in fr_files]
+        df_fr = pd.concat(fr_dfs, ignore_index=True)
 
-        # BHEEMA FILES
-        b_dfs = [
-            safe_read_excel(
-                f,
-                required_columns=[
-                    "VillName",
-                    "PPBNO",
-                    "FarmerName_Tel",
-                    "FatherName_Tel",
-                    "AadharId",
-                    "MobileNo",
-                    'EnrollmenStatus'
-                ]
-            )
-            for f in bh_files
+        # ------------------------------------------
+        # READ BHEEMA FILES
+        # ------------------------------------------
+        bheema_required_columns = [
+            "VillName",
+            "PPBNO",
+            "FarmerName_Tel",
+            "FatherName_Tel",
+            "AadharId",
+            "MobileNo",
+            "EnrollmenStatus"
         ]
-        df_bh = pd.concat(b_dfs, ignore_index=True)
 
-        # MERGE
-        left_on = ["Village Name", "Farmer Name", "Identifier Name"]
-        right_on = ["VillName", "FarmerName_Tel", "FatherName_Tel"]
+        bh_dfs = [
+            safe_read_excel(
+                file,
+                required_columns=bheema_required_columns
+            )
+            for file in bh_files
+        ]
 
+        df_bh = pd.concat(bh_dfs, ignore_index=True)
+
+        # ------------------------------------------
+        # VALIDATE UNCLAIMED COLUMNS
+        # ------------------------------------------
+        unclaimed_required_columns = [
+            "Bucket ID",
+            "Village LGD Code",
+            "Village Name",
+            "Farmer Name",
+            "Identifier Name",
+            "Survey Number",
+            "Sub Survey Number"
+        ]
+
+        missing_unclaimed = [
+            column
+            for column in unclaimed_required_columns
+            if column not in df_fr.columns
+        ]
+
+        if missing_unclaimed:
+            raise ValueError(
+                f"Missing required columns in Unclaimed file: "
+                f"{', '.join(missing_unclaimed)}"
+            )
+
+        # ------------------------------------------
+        # MERGE KEYS
+        # ------------------------------------------
+        left_on = [
+            "Village Name",
+            "Farmer Name",
+            "Identifier Name"
+        ]
+
+        right_on = [
+            "VillName",
+            "FarmerName_Tel",
+            "FatherName_Tel"
+        ]
+
+        # Convert merge columns to cleaned text
         df_fr[left_on] = df_fr[left_on].astype(str).apply(
-            lambda c: c.str.strip().str.lower()
-        )
-        df_bh[right_on] = df_bh[right_on].astype(str).apply(
-            lambda c: c.str.strip().str.lower()
+            lambda column: column.str.strip().str.lower()
         )
 
+        df_bh[right_on] = df_bh[right_on].astype(str).apply(
+            lambda column: column.str.strip().str.lower()
+        )
+
+        # ------------------------------------------
+        # MERGE UNCLAIMED + BHEEMA
+        # ------------------------------------------
         merged = df_fr.merge(
             df_bh,
             left_on=left_on,
@@ -171,62 +577,149 @@ if fr_files and bh_files:
             how="left"
         )
 
-        # GROUP BY
+        # ------------------------------------------
+        # GROUP AND REMOVE DUPLICATES
+        # ------------------------------------------
         processed_df = merged.groupby(
-            ["Bucket ID", "Village LGD Code"]
+            ["Bucket ID", "Village LGD Code"],
+            dropna=False
         ).agg({
-            "Village Name": lambda x: ", ".join([str(val) for val in x.unique() if pd.notna(val)]),
+            "Village Name": lambda values: ", ".join(
+                [
+                    str(value)
+                    for value in values.unique()
+                    if pd.notna(value)
+                ]
+            ),
             "Farmer Name": "last",
             "Identifier Name": "last",
-            "Farmer Mobile Number": "last",
             "AadharId": "last",
             "MobileNo": "last",
             "PPBNO": "last",
-            "Survey Number": lambda x: ", ".join([str(val) for val in x.unique() if pd.notna(val)]),
-            "Sub Survey Number": lambda x: ", ".join([str(val) for val in x.unique() if pd.notna(val)]),
-            'EnrollmenStatus': 'last'
-        }).reset_index()
+            "Survey Number": lambda values: ", ".join(
+                [
+                    str(value)
+                    for value in values.unique()
+                    if pd.notna(value)
+                ]
+            ),
+            "Sub Survey Number": lambda values: ", ".join(
+                [
+                    str(value)
+                    for value in values.unique()
+                    if pd.notna(value)
+                ]
+            ),
+            "EnrollmenStatus": "last"
+        }
+        ).reset_index()
 
-        processed_df.drop(columns=["Village LGD Code"], inplace=True)
+        # Remove Village LGD Code from final report
+        processed_df.drop(
+            columns=["Village LGD Code"],
+            inplace=True
+        )
 
-        st.success("File processed successfully")
-        st.write(processed_df.head())
+        st.success("✅ File processed successfully.")
 
-    except Exception as e:
-        # print(e) "⚠️ There is an issue with the Excel file. Please reupload.",
-        #     icon="⚠️"
-        st.toast(e)
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "Unclaimed records",
+                len(df_fr)
+            )
+
+        with col2:
+            st.metric(
+                "Bheema records",
+                len(df_bh)
+            )
+
+        with col3:
+            st.metric(
+                "Final merged records",
+                len(processed_df)
+            )
+
+        st.markdown(
+    """
+    <h3 style="
+        color: #1b5e20;
+        background-color: #e8f5e9;
+        border-left: 6px solid #2e7d32;
+        border-radius: 10px;
+        padding: 12px 16px;
+        margin-top: 20px;
+        margin-bottom: 12px;
+        font-weight: 800;
+    ">
+        📋 Preview of merged farmer records
+    </h3>
+    """,
+    unsafe_allow_html=True
+)
+        st.dataframe(
+            processed_df.head(5),
+            use_container_width=True
+        )
+
+    except Exception as error:
+        st.error(
+            f"⚠️ There is an issue with the Excel file: {error}"
+        )
+
+
 # ==================================================
-# DOWNLOAD + COUNTER (ONLY PLACE COUNTER INCREMENTS)
+# DOWNLOAD + COUNTER
 # ==================================================
 if processed_df is not None:
     buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        processed_df.to_excel(writer, index=False, sheet_name="All_Villages")
+
+    with pd.ExcelWriter(
+        buffer,
+        engine="xlsxwriter"
+    ) as writer:
+        processed_df.to_excel(
+            writer,
+            index=False,
+            sheet_name="All_Villages"
+        )
 
     fingerprint = get_files_fingerprint(fr_files + bh_files)
 
     if st.download_button(
-        label="Download Full Excel",
+        label="⬇️ Download Full Excel Report",
         data=buffer.getvalue(),
         file_name="Full_Farmer_Report.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     ):
+        # Show review form immediately after user downloads
+        st.session_state.show_review_form = True
+
+        # Counter increases once for each unique set of uploaded files
         if st.session_state.last_downloaded_fingerprint != fingerprint:
             try:
                 new_value = increment_counter("file_process_count")
+
                 st.session_state.last_downloaded_fingerprint = fingerprint
                 st.session_state.latest_metric_value = new_value
-                st.toast("✅ Download recorded", icon="✅")
+
+                st.toast(
+                    "✅ Download recorded successfully",
+                    icon="✅"
+                )
+
             except Exception:
                 st.toast(
-                    "⚠️ Download completed, but counter update failed.",
+                    "⚠️ Download completed, but the counter update failed.",
                     icon="⚠️"
                 )
 
+
 # ==================================================
-# SHOW METRIC AFTER DOWNLOAD
+# SHOW PROCESSING COUNTER
 # ==================================================
 if st.session_state.latest_metric_value is not None:
     st.metric(
@@ -237,24 +730,198 @@ if st.session_state.latest_metric_value is not None:
 else:
     try:
         current_value = get_counter_value("file_process_count")
-        st.metric("📊 Total files processed till now", current_value)
+
+        st.metric(
+            "📊 Total files processed till now",
+            current_value
+        )
+
     except Exception:
         pass
 
+
 # ==================================================
-# FOOTER
+# REVIEW & FEEDBACK
+# SHOW ONLY AFTER DOWNLOAD
 # ==================================================
-st.markdown("---")
-st.markdown(
-    """
-    <div style="text-align:center; color:gray; font-size:14px;">
-        Developed and maintained by <b>Sandeep Kumar Apkani</b><br>
-        <a href="https://apkanisandeep01.github.io/my-portfolio/"
-           target="_blank"
-           style="color:#4a90e2; text-decoration:none;">
-            Visit my portfolio
-        </a>
+if st.session_state.show_review_form:
+    st.markdown("""
+    <div class="review-card">
+        <h2>⭐ Thank You for Using FR DataSync</h2>
+        <p>
+            Your Excel report is ready. Please take one minute to share your experience,
+            report an Excel issue, or suggest a useful new feature for agriculture field teams.
+        </p>
     </div>
-    """,
-    unsafe_allow_html=True
-)
+    """, unsafe_allow_html=True)
+
+    google_form_url = "https://forms.gle/g2EJh29zDgFJPCWi9"
+
+    components.iframe(
+        google_form_url,
+        height=420,
+        scrolling=True
+    )
+
+    st.markdown(
+        """
+        <p class="review-note">
+            Your feedback helps improve FR DataSync for farmer record management.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ==================================================
+# COMPACT FOOTER
+# ==================================================
+PORTFOLIO_URL = "https://apkanisandeep01.github.io/my-portfolio/"
+GITHUB_URL = "https://github.com/apkanisandeep01"
+LINKEDIN_URL = "https://www.linkedin.com/in/sandeep-data-analyst-uk"
+CONTACT_EMAIL = "apkansiandeep00@gmail.com"
+APP_VERSION = "v1.0"
+
+
+footer_links = f"""
+<a href="{PORTFOLIO_URL}" target="_blank" rel="noopener noreferrer">
+    🌐 Portfolio
+</a>
+"""
+
+if GITHUB_URL:
+    footer_links += f"""
+    <a href="{GITHUB_URL}" target="_blank" rel="noopener noreferrer">
+        💻 GitHub
+    </a>
+    """
+
+if LINKEDIN_URL:
+    footer_links += f"""
+    <a href="{LINKEDIN_URL}" target="_blank" rel="noopener noreferrer">
+        🔗 LinkedIn
+    </a>
+    """
+
+if CONTACT_EMAIL:
+    footer_links += f"""
+    <a href="mailto:{CONTACT_EMAIL}">
+        ✉️ Contact
+    </a>
+    """
+
+
+footer_html = f"""
+<style>
+    .fr-footer {{
+        margin-top: 2rem;
+        padding: 16px 18px 12px 18px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #0f2e13 0%, #1b5e20 100%);
+        color: #d7ead7;
+        text-align: center;
+        box-shadow: 0 8px 20px rgba(15, 46, 19, .20);
+    }}
+
+    .fr-footer .brand {{
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 2px;
+    }}
+
+    .fr-footer .tagline {{
+        font-size: .78rem;
+        color: #a9d0a9;
+        margin-bottom: 8px;
+    }}
+
+    .fr-footer .dev {{
+        font-size: .8rem;
+        color: #e6f2e6;
+    }}
+
+    .fr-footer .dev b {{
+        color: #ffffff;
+    }}
+
+    .fr-footer .links {{
+        margin-top: 9px;
+    }}
+
+    .fr-footer .links a {{
+        display: inline-block;
+        margin: 3px 4px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: .75rem;
+        font-weight: 600;
+        color: #ffffff !important;
+        text-decoration: none;
+        background: rgba(255, 255, 255, .10);
+        border: 1px solid rgba(255, 255, 255, .20);
+        transition: all .2s ease;
+    }}
+
+    .fr-footer .links a:hover {{
+        background: #43a047;
+        border-color: #43a047;
+        transform: translateY(-1px);
+    }}
+
+    .fr-footer .features {{
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: .7rem;
+    }}
+
+    .fr-footer .features span {{
+        background: rgba(255, 255, 255, .08);
+        padding: 3px 8px;
+        border-radius: 7px;
+        color: #e6f2e6;
+    }}
+
+    .fr-footer .bottom {{
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, .12);
+        font-size: .68rem;
+        color: #92b892;
+    }}
+</style>
+
+<div class="fr-footer">
+    <div class="brand">🌾 FR DataSync</div>
+
+    <div class="tagline">
+        Smart farmer record merging for agriculture field teams
+    </div>
+
+    <div class="dev">
+        Developed by <b>Sandeep Kumar Apkani</b>
+    </div>
+
+    <div class="links">
+        {footer_links}
+    </div>
+
+    <div class="features">
+        <span>⚡ Fast merging</span>
+        <span>🧹 Duplicate removal</span>
+        <span>🔒 Files not stored</span>
+        <span>📊 Excel ready</span>
+    </div>
+
+    <div class="bottom">
+        © {datetime.now().year} FR DataSync · {APP_VERSION} · Made with ❤️ for Users
+    </div>
+</div>
+"""
+
+try:
+    st.html(footer_html)
+except AttributeError:
+    st.markdown(footer_html, unsafe_allow_html=True)
